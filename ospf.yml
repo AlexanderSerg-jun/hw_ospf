@@ -1,0 +1,116 @@
+---
+- name: OSPF Configuration
+  # Specify the hostname or group to be configured
+  hosts: routers
+  # Execute modules as the root user
+  become: yes
+  tasks:
+    # Update packages and install vim, traceroute, tcpdump, and net-tools
+    - name: Install base tools
+      apt:
+        name:
+          - vim
+          - traceroute
+          - tcpdump
+          - net-tools
+        state: present
+        update_cache: true
+
+    - name: Disable UFW service
+      service:
+        name: ufw
+        state: stopped
+        enabled: false
+
+    # Add the gpg-key for the repository
+    - name: Add gpg frrouting.org
+      apt_key:
+        url: "https://deb.frrouting.org/frr/keys.asc"
+        state: present
+
+    # Add the repository https://deb.frrouting.org/frr
+    - name: Add frr repository
+      apt_repository:
+        repo: 'deb https://deb.frrouting.org/frr {{ ansible_distribution_release }} frr-stable'
+        state: present
+
+    # Update packages and install FRR
+    - name: Install FRR packages
+      apt:
+        name:
+          - frr
+          - frr-pythontools
+        state: present
+        update_cache: true
+
+    # Enable forwarding of transit packets
+    - name: Set up forwarding of packets across routers
+      sysctl:
+        name: net.ipv4.conf.all.forwarding
+        value: '1'
+        state: present
+
+    # Copy the daemons file to hosts, specify the owner and permissions
+    - name: Base OSPF setup
+      template:
+        src: ./config/daemon.ini
+        dest: /etc/frr/daemons
+        owner: frr
+        group: frr
+        mode: 0640
+
+- name: FRR Configuration for router1
+  hosts: router1
+  become: true
+  tasks:
+    - name: Copy frr.conf
+      copy:
+        src: ./config/frr_r1.conf
+        dest: /etc/frr/frr.conf
+        owner: frr
+        group: frr
+        mode: 0640
+
+- name: FRR Configuration for router2
+  hosts: router2
+  become: true
+  tasks:
+    - name: Copy frr2.conf
+      copy:
+        src: ./config/frr_r2.conf
+        dest: /etc/frr/frr.conf
+        owner: frr
+        group: frr
+        mode: 0640
+
+- name: FRR Configuration for router3
+  hosts: router3
+  become: true
+  tasks:
+    - name: Copy frr3.conf
+      copy:
+        src: ./config/frr_r3.conf
+        dest: /etc/frr/frr.conf
+        owner: frr
+        group: frr
+        mode: 0640
+
+- name: Asymmetric Routing and Restart FRR
+  # Specify the hostname or group to be configured
+  hosts: all
+  # Execute modules as the root user
+  become: yes
+  tasks:
+    # Disable asymmetric routing
+    - name: Set up asynchronous routing
+      sysctl:
+        name: net.ipv4.conf.all.rp_filter
+        value: '0'
+        state: present
+
+    # Restart FRR and enable autostart
+    - name: Restart FRR
+      service:
+        name: frr
+        state: restarted
+        enabled: true
